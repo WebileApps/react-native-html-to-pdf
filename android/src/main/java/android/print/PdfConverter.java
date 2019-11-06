@@ -9,6 +9,10 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
 import android.os.ParcelFileDescriptor;
+import android.print.PrintAttributes;
+import android.print.PrintDocumentAdapter;
+import android.print.PrintJob;
+import android.print.PrintManager;
 import android.util.Log;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -61,36 +65,23 @@ public class PdfConverter implements Runnable {
         mWebView = new WebView(mContext);
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
+            public void onLoadResource(WebView view, String url) {
+                Log.d(TAG, "Loading url " + url);
+                super.onLoadResource(view, url);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT)
                     throw new RuntimeException("call requires API level 19");
                 else {
-                    PrintDocumentAdapter documentAdapter = mWebView.createPrintDocumentAdapter();
-                    documentAdapter.onLayout(null, getPdfPrintAttrs(), null, new PrintDocumentAdapter.LayoutResultCallback() {
-                    }, null);
-                    documentAdapter.onWrite(new PageRange[]{PageRange.ALL_PAGES}, getOutputFileDescriptor(), null, new PrintDocumentAdapter.WriteResultCallback() {
-                        @Override
-                        public void onWriteFinished(PageRange[] pages) {
-                            try {
-                                String base64 = "";
-                                if (mShouldEncode) {
-                                    base64 = encodeFromFile(mPdfFile);
-                                }
-
-                                PDDocument myDocument = PDDocument.load(mPdfFile);
-                                int pagesToBePrinted = myDocument.getNumberOfPages();
-
-                                mResultMap.putString("filePath", mPdfFile.getAbsolutePath());
-                                mResultMap.putString("numberOfPages", String.valueOf(pagesToBePrinted));
-                                mResultMap.putString("base64", base64);
-                                mPromise.resolve(mResultMap);
-                            } catch (IOException e) {
-                                mPromise.reject(e.getMessage());
-                            } finally {
-                                destroy();
-                            }
-                        }
-                    });
+                    PrintManager printManager = (PrintManager) mContext
+                            .getSystemService(Context.PRINT_SERVICE);
+                    // Get a print adapter instance
+                    PrintDocumentAdapter printAdapter = mWebView.createPrintDocumentAdapter("Webview Document");
+                    PrintJob printJob = printManager.print("Webview Document", printAdapter, getPdfPrintAttrs());
+                    mWebView = null;
+                    mIsCurrentlyConverting = false;
                 }
             }
         });
